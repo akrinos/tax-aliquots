@@ -34,5 +34,5 @@ python process_clusters.py \
 
 ### Citations
 
-Buchfink, Benjamin, et al. "Sensitive clustering of protein sequences at tree-of-life scale using DIAMOND DeepClust." bioRxiv (2023): 2023-01.
-Sanchez-Ramirez, Santiago, et al. "faSomeRecords." https://github.com/santiagosnchez/faSomeRecords
+- Buchfink, Benjamin, et al. "Sensitive clustering of protein sequences at tree-of-life scale using DIAMOND DeepClust." bioRxiv (2023): 2023-01.
+- Sanchez-Ramirez, Santiago, et al. "faSomeRecords." https://github.com/santiagosnchez/faSomeRecords
