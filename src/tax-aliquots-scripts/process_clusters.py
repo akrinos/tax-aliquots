@@ -179,11 +179,11 @@ def main():
                         "tr",":",",",">",
                         prot_map_lb]))
     
-    print(" ".join(["cat",args.prot_map,"|","tr",",",repr("\n"),"|",
+    print(" ".join(["cat","args.protmap","|","tr",",",repr("\n"),"|",
                         "sed","'s/\"//g'","|",
                         "sed","'s/{//g'","|","sed","'s/}//g'","|","sed","'s/ //g'","|",
                         "tr",":",",",">",
-                        prot_map_lb]),flush=True)
+                        "protmaplb"]),flush=True)
    
     ## filter out organism of interest
     source_ids=list(set(tax_table.loc[tax_table[args.level_of_interest].\

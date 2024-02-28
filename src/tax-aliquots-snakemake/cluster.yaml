@@ -1,0 +1,28 @@
+__default__:
+  account: akrinos
+  command_options:
+    slurm:
+      account: --account={}
+      command: sbatch --parsable --qos=unlim
+      key_mapping: null
+      mem: --mem={}g
+      name: --job-name={}
+      nodes: -N {}
+      queue: --partition={}
+      threads: -n {}
+      time: --time={}
+  cpupertask: 5
+  mem: 20
+  nodes: 1
+  queue: compute
+  system: slurm
+  tasks: 1
+  time: 5000
+hierarchical_clustering:
+  mem: 180
+  cpupertask: 18
+  time: 5000
+diamond_deepclust:
+  mem: 180
+  cpupertask: 18
+  time: 5000
