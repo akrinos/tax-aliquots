@@ -27,8 +27,8 @@ import ahocorasick
 from ahocorasick import Automaton
 #from parsl import python_app, bash_app
 
-OUTPUTDIR = "../../output/tax-aliquots_sm_8"
-DATABASEDIR = "/vortexfs1/omics/alexander/akrinos/00-tax-aliquots/tax-aliquots/data/databases"
+OUTPUTDIR = "../../output/tax-aliquots_sm_8_all_mem_cov_50"
+DATABASEDIR = "/vortexfs1/omics/alexander/akrinos/00-tax-aliquots/tax-aliquots/data/databases_full"
 
 ruleorder: filter_deepclust > diamond_deepclust
 ruleorder: hierarchical_clustering_split > hierarchical_clustering
@@ -178,25 +178,13 @@ nseqs_phaeo=1000000
 nseqs_thal=100000000
 rule all:
     input:
-        #outfile = expand(os.path.join(OUTPUTDIR,"hier_clust_{distance}","{database}","{split1}",
-        #    "done_{database}.txt"),database=["phaeo"],
-        #                 distance=[0.5], split1=list(range(0,nseqs_phaeo,split_no))),
-        #outfile_thal = expand(os.path.join(OUTPUTDIR,"hier_clust_{distance}","{database}","{split1}",
-        #    "done_{database}.txt"),database=["thal"],
-        #                 distance=[0.5], split1=list(range(0,nseqs_thal,split_no)))
-        #outfile = expand(os.path.join(OUTPUTDIR,"hier_clust_{dist}","done_{database}.txt"),database=["phaeo_txme",
-        #                "phaeo_txme_all","phaeo_txme_all_w_pouch"],
-        #                 dist=[0.5,0.3,0.1,0.8]),
-        #outfile_all_clust = expand(os.path.join(OUTPUTDIR,"all_hier_clust_{dist}","done_{database}.txt"),database=["phaeo_txme",
-        #                "phaeo_txme_all","phaeo_txme_all_w_pouch"],
-        #                 dist=[0.5,0.3,0.1,0.8]),
-        #outfile_sample_clust = expand(os.path.join(OUTPUTDIR,"sample_hier_clust_{dist}","done_{database}.txt"),database=["phaeo_txme",
-        #                "phaeo_txme_all","phaeo_txme_all_w_pouch"],
-        #                 dist=[0.5,0.3,0.1,0.8]),
-        eukulele_ref = expand(os.path.join(OUTPUTDIR,"eukulele_default","{database}","done_default.txt"),
-                        database=["phaeo_txme_all"])
-        #eukulele = expand(os.path.join(OUTPUTDIR,"eukulele_run","{database}","done.txt"),
-        #                database=["phaeo_txme","phaeo_txme_all","phaeo_txme_all_w_pouch"])
+        #outfile_sample_clust = expand(os.path.join(OUTPUTDIR,"sample_hier_clust_{dist}","done_{database}.txt"),
+        #                              database=["phaeo_txme_all"],
+        #                              dist=[0.5,0.3,0.1,0.8]),
+        outfile_sample_clust_default = expand(os.path.join(OUTPUTDIR,"REF_sample_hier_clust_{dist}","done_{database}.txt"),
+                                      database=["phaeo_txme_all"],
+                                      dist=[0.5,0.3,0.1,0.8]),  
+        eukulele = expand(os.path.join(OUTPUTDIR,"eukulele_default","{database}","done_default.txt"),database=["phaeo_txme_all"]) 
 
 rule combined_files:
     input:
@@ -211,6 +199,64 @@ rule combined_files:
         sed 's/\s.*$/_sample/' {input.sequence_file} >> {output.combined_file}
         """
 
+rule combined_files_ref:
+    input:
+        database_file = "/vortexfs1/omics/alexander/data/databases/marmmetsp-5Dec2022/reference.pep.fa",
+        sequence_file = lambda wc: select_data_file(wc.database)
+    output:
+        combined_file = os.path.join(OUTPUTDIR,"REF_input_files","combined_input_{database}.fasta")
+    shell:
+        """
+        echo sed -E 's/([^ ]*) (.*)\/SOURCE_ID=(.*)/\\1_reference_PEPID_\\1_SOURCEID_\\3/' {input.database_file} > {output.combined_file}
+        sed -E 's/([^ ]*) (.*)\/SOURCE_ID=(.*)/\\1_reference_PEPID_\\1_SOURCEID_\\3/' {input.database_file} > {output.combined_file}
+        sed 's/\s.*$/_sample/' {input.sequence_file} >> {output.combined_file}
+        """
+
+#sed 's/\s.*$/_reference/' {input.database_file} > {output.combined_file}
+#sed 's/\s.*$/_sample/' {input.sequence_file} >> {output.combined_file}
+rule diamond_deepclust_ref:
+    input:
+        combined_file = os.path.join(OUTPUTDIR,"REF_input_files","combined_input_{database}.fasta")
+    output:
+        deepclust = os.path.join(OUTPUTDIR,"REF_clustered_files","deepclust_{database}.out")
+    shell:
+        """
+        /vortexfs1/omics/alexander/akrinos/2022-euk-diversity/code/snakemake-workflows/diamond-deepclust/diamond deepclust -d {input.combined_file} -o {output.deepclust} --member-cover 50
+        """
+        
+rule filter_deepclust_ref:
+    input:
+        deepclust = os.path.join(OUTPUTDIR,"REF_clustered_files","deepclust_{database}.out")
+    output:
+        deepclust_filtered = os.path.join(OUTPUTDIR,"REF_clustered_files_sample","deepclust_filtered_sample_{database}.out"),
+        deepclust_filtered_rep_mem = os.path.join(OUTPUTDIR,"REF_clustered_files_sample","repmem_deepclust_filtered_sample_{database}.out")
+    run:
+        deepclust=pd.read_csv(input.deepclust,sep="\t",header=None,names=["Representative","Member"])
+        deepclust_forcheck=deepclust.copy(deep=True)
+        deepclust_forcheck["Member_simp"]=["database" if "_reference" in curr else "sample" for curr in deepclust_forcheck["Member"]]
+        def listset(list_in):
+            return "_".join(sorted(list(set(list_in))))
+        deepclust_summarized = deepclust_forcheck.groupby("Representative")["Member_simp"].agg(listset).reset_index()
+        deepclust_summarized=deepclust_summarized.loc[(deepclust_summarized.Member_simp=="database_sample")|(deepclust_summarized.Member_simp=="sample"),:]
+        
+        merged_dc = deepclust.merge(deepclust_summarized[["Representative","Member_simp"]],left_on="Representative",
+                right_on="Representative",how="inner")
+                
+        merged_dc[["Member"]].to_csv(output.deepclust_filtered,index=False)
+        merged_dc[["Representative","Member"]].to_csv(output.deepclust_filtered_rep_mem,index=False,sep="\t")
+
+rule filter_assembly_samp_ref:
+    input:
+        combined_file = os.path.join(OUTPUTDIR,"REF_input_files","combined_input_{database}.fasta"),
+        deepclust_filtered = os.path.join(OUTPUTDIR,"REF_clustered_files_sample","deepclust_filtered_sample_{database}.out")
+    output:
+        deepclust_filtered = os.path.join(OUTPUTDIR,"REF_filtered_assembly_sample","filtered_assembly_sample_{database}.fasta")
+    shell:
+        """
+        seqtk subseq {input.combined_file} {input.deepclust_filtered} > {output.deepclust_filtered}
+        """
+        
+
 #sed 's/\s.*$/_reference/' {input.database_file} > {output.combined_file}
 #sed 's/\s.*$/_sample/' {input.sequence_file} >> {output.combined_file}
 rule diamond_deepclust:
@@ -220,7 +266,7 @@ rule diamond_deepclust:
         deepclust = os.path.join(OUTPUTDIR,"clustered_files","deepclust_{database}.out")
     shell:
         """
-        /vortexfs1/omics/alexander/akrinos/2022-euk-diversity/code/snakemake-workflows/diamond-deepclust/diamond deepclust -d {input.combined_file} -o {output.deepclust} --member-cover 30
+        /vortexfs1/omics/alexander/akrinos/2022-euk-diversity/code/snakemake-workflows/diamond-deepclust/diamond deepclust -d {input.combined_file} -o {output.deepclust} --member-cover 80
         """
 
 rule filter_deepclust:
@@ -245,21 +291,6 @@ rule filter_deepclust:
         merged_dc[["Representative","Member"]].to_csv(output.deepclust_filtered_rep_mem,index=False,sep="\t")
 
 
-rule eukulele_run:
-    input:
-        sequence_file = lambda wc: select_data_file(wc.database)
-    output:
-        finished = os.path.join(OUTPUTDIR,"eukulele_run","{database}","done.txt")
-    params:
-        sampledir = os.path.join(DATABASEDIR,"sample-dir"),
-        eukulele_reference_dir = os.path.join(DATABASEDIR,"{database}"),
-        eukulele_directory = os.path.join(OUTPUTDIR,"eukulele_run","{database}")
-    shell:
-        """
-        EUKulele --mets_or_mags mets --sample_dir {params.sampledir} --p_ext ".pep" --reference_dir {params.eukulele_reference_dir} -o {params.eukulele_directory}
-        touch {output.finished}
-        """
-
 rule eukulele_run_def:
     input:
         sequence_file = lambda wc: select_data_file(wc.database)
@@ -275,6 +306,21 @@ rule eukulele_run_def:
         touch {output.finished}
         """
         
+rule eukulele_run:
+    input:
+        sequence_file = lambda wc: select_data_file(wc.database)
+    output:
+        finished = os.path.join(OUTPUTDIR,"eukulele_run","{database}","done.txt")
+    params:
+        sampledir = os.path.join(DATABASEDIR,"sample-dir"),
+        eukulele_reference_dir = os.path.join(DATABASEDIR,"{database}"),
+        eukulele_directory = os.path.join(OUTPUTDIR,"eukulele_run","{database}")
+    shell:
+        """
+        EUKulele --mets_or_mags mets --sample_dir {params.sampledir} --p_ext ".pep" --reference_dir {params.eukulele_reference_dir} -o {params.eukulele_directory}
+        touch {output.finished}
+        """
+
 rule filter_assembly:
     input:
         combined_file = os.path.join(OUTPUTDIR,"input_files","combined_input_{database}.fasta"),
@@ -317,6 +363,53 @@ rule filter_assembly_samp:
         """
         seqtk subseq {input.combined_file} {input.deepclust_filtered} > {output.deepclust_filtered}
         """
+        
+rule hierarchical_clustering_sample_ref:
+    input:
+        deepclust_filtered = os.path.join(OUTPUTDIR,"REF_filtered_assembly_sample","filtered_assembly_sample_{database}.fasta"),
+        deepclust_filtered_rep_mem = os.path.join(OUTPUTDIR,"REF_clustered_files_sample","repmem_deepclust_filtered_sample_{database}.out"),
+        tax_table = lambda wc: select_tax_table(wc.database)
+    output:
+        outfile = os.path.join(OUTPUTDIR,"REF_sample_hier_clust_{distance}","done_{database}.txt")
+    params:
+        intermed_dir = os.path.join(OUTPUTDIR,"REF_sample_hier_clust_{distance}","{database}"),
+        distance_thres = "{distance}"
+    run:
+        if not os.path.exists(params.intermed_dir):
+            os.makedirs(params.intermed_dir)
+        tax_table = pd.read_csv(input.tax_table,sep="\t")
+        tax_table=tax_table.drop([curr for curr in tax_table.columns if "Unnamed" in curr],
+                                 axis="columns")
+        tax_table.columns = [curr.lower() for curr in tax_table.columns]
+        tax_table.source_id = tax_table.source_id.astype(str)
+        read_in_dc = pd.read_csv(input.deepclust_filtered_rep_mem,sep="\t",header=None,names=["Rep","Mem"])
+        clust_rep_set=list(set(read_in_dc.Rep))
+        cluster_ids = ["HomClust_"+str(curr) for curr in range(len(clust_rep_set))]
+        cluster_id_dict = dict(zip(clust_rep_set,cluster_ids))
+
+        intermed_file_dir=params.intermed_dir
+        completion_nums = []
+        kmer_len=3
+        for clust_rep in clust_rep_set:
+            subfile_clust=read_in_dc.loc[read_in_dc.Rep==clust_rep,:]
+            if len(subfile_clust.index)<=1:
+                subfile_clust["cluster_blob"]=1
+                hom_clust_id=cluster_id_dict[clust_rep]
+                subfile_clust["HomClust"]=hom_clust_id
+                subfile_clust["Source_ID"]=[curr.split("SOURCEID_")[-1] for curr in subfile_clust.Rep]
+                subfile_clust["PEP_ID"]=[curr.split("PEPID_")[-1] for curr in subfile_clust.Rep]
+                subfile_clust.to_csv(os.path.join(intermed_file_dir,str(hom_clust_id)+"_k_"+str(kmer_len)+".intermed"))
+                print(subfile_clust,"short!",flush=True)
+            else:
+                hom_clust_id=cluster_id_dict[clust_rep]
+                completion_nums.append(hier_clust(clust_rep,subfile_clust,kmer_len,
+                                                  intermed_file_dir,hom_clust_id,
+                                                  input.deepclust_filtered,tax_table,params.distance_thres))
+
+        # Main function: wait for all apps to finish and collect the results
+        #outputs = [i.result() for i in completion_nums]
+        
+        tax_table.to_csv(output.outfile)
         
 rule hierarchical_clustering:
     input:
