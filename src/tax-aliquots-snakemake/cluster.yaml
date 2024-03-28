@@ -11,10 +11,10 @@ __default__:
       queue: --partition={}
       threads: -n {}
       time: --time={}
-  cpupertask: 5
-  mem: 100
+  cpupertask: 6
+  mem: 40
   nodes: 1
-  queue: scavenger
+  queue: compute
   system: slurm
   tasks: 1
   time: 5000
@@ -22,9 +22,9 @@ hierarchical_clustering:
   mem: 40
   cpupertask: 18
   time: 5000
-  queue: scavenger
+  queue: scavenger-bmem
 diamond_deepclust:
   mem: 180
   cpupertask: 18
-  queue: scavenger
+  queue: scavenger-bmem
   time: 5000
