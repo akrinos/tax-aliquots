@@ -27,7 +27,7 @@ import concurrent.futures
 from functools import partial
 
 OUTPUTDIR = "../../output/tax-aliquots_haptophyte_3"
-DATABASEDIR = "/vortexfs1/omics/alexander/akrinos/00-tax-aliquots/tax-aliquots/data/databases_full"
+DATABASEDIR = "../data/databases_full"
 
 ruleorder: filter_deepclust_ref > diamond_deepclust_ref
     
@@ -65,7 +65,6 @@ def compute_intersections(strings,kmer_len,cluster_seq_ids):
 
     intersection_info_curr  = np.triu(intersection_info_curr) + np.triu(intersection_info_curr,1).T
     intersection_info_curr = pd.DataFrame(intersection_info_curr)
-    print(cluster_seq_ids,flush=True)
     intersection_info_curr.index=cluster_seq_ids
     intersection_info_curr.columns=cluster_seq_ids
     return intersection_info_curr
@@ -79,7 +78,6 @@ def hier_clust(clust_rep,subfile_clust,kmer_len,
     subfile_clust=subfile_clust.drop_duplicates()
     strings=get_list_of_seqs(behaved_fasta,list(subfile_clust.loc[subfile_clust.Rep==clust_rep,"Mem"]),intermed_file_dir)
     if len(strings) == 0:
-        print(clust_rep,"not found",flush=True)
         return hom_clust_id
     cluster_seq_ids=list(subfile_clust.loc[subfile_clust.Rep==clust_rep,"Mem"])
     
@@ -105,7 +103,6 @@ def hier_clust(clust_rep,subfile_clust,kmer_len,
 
     if len(dataframe_intersections_unmelt.index) > 1:
         to_drop = list(tax_table.columns) + ["Source_ID","PEP_ID","Rep","Mem"]
-        #to_drop = ["Source_ID","PEP_ID","Rep","Mem"]
         a=np.array(dataframe_intersections_unmelt.\
                    drop(to_drop,axis="columns"))
         np.fill_diagonal(a,0)
@@ -136,9 +133,7 @@ def submit_routine(clust_rep,read_in_dc,kmer_len,cluster_id_dict,intermed_file_d
         subfile_clust["Source_ID"]=[curr.split("SOURCEID_")[-1] for curr in subfile_clust.Rep]
         subfile_clust["PEP_ID"]=[curr.split("PEPID_")[-1] for curr in subfile_clust.Rep]
         subfile_clust.to_csv(os.path.join(intermed_file_dir,str(hom_clust_id)+"_k_"+str(kmer_len)+".intermed"))
-        print(subfile_clust,"short!",flush=True)
     else:
-        print(clust_rep,flush=True)
         hom_clust_id=cluster_id_dict[clust_rep]
         hier_clust(clust_rep,subfile_clust,kmer_len,
                   intermed_file_dir,hom_clust_id,
@@ -156,14 +151,6 @@ def parallelize_code(clust_rep_set,read_in_dc,kmer_len,cluster_id_dict,intermed_
     for future in concurrent.futures.as_completed(futures):
         result = future.result()
         results.append(result)
-    #process_partial = lambda arg1: submit_routine(arg1,read_in_dc,kmer_len,cluster_id_dict)
-    #partial(submit_routine, read_in_dc=read_in_dc, cluster_id_dict=cluster_id_dict)
-
-    #with concurrent.futures.ProcessPoolExecutor(max_workers=6) as executor:
-    #    results = executor.map(process_partial, clust_rep_set)
-
-    #for result in results:
-    #    print(result)  
         
 rule all:
     input:
@@ -181,7 +168,6 @@ rule combined_files:
         combined_file = os.path.join(OUTPUTDIR,"input_files","combined_input.fasta")
     shell:
         """
-        echo sed -E 's/([^ ]*) (.*)\/SOURCE_ID=(.*)/\\1_reference_PEPID_\\1_SOURCEID_\\3/' {input.database_file} > {output.combined_file}
         sed -E 's/([^ ]*) (.*)\/SOURCE_ID=(.*)/\\1_reference_PEPID_\\1_SOURCEID_\\3/' {input.database_file} > {output.combined_file}
         sed 's/\s.*$/_sample/' {input.sequence_file} >> {output.combined_file}
         """
@@ -195,23 +181,25 @@ rule diamond_deepclust_ref:
         coverage = "{coverage}"
     shell:
         """
-        /vortexfs1/omics/alexander/akrinos/2022-euk-diversity/code/snakemake-workflows/diamond-deepclust/diamond deepclust -d {input.combined_file} -o {output.deepclust} --member-cover {params.coverage}
+        diamond deepclust -d {input.combined_file} -o {output.deepclust} --member-cover {params.coverage}
         """
         
 rule filter_deepclust_ref:
     input:
         deepclust = os.path.join(OUTPUTDIR,"clustered_files","deepclust_{coverage}.out")
     output:
-        deepclust_filtered = os.path.join(OUTPUTDIR,"clustered_files_sample","deepclust_filtered_sample_{coverage}.out"),
-        deepclust_filtered_rep_mem = os.path.join(OUTPUTDIR,"clustered_files_sample","repmem_deepclust_filtered_sample_{coverage}.out")
+        deepclust_filtered = os.path.join(OUTPUTDIR,"clustered_files_sample",
+            "deepclust_filtered_sample_{coverage}.out"),
+        deepclust_filtered_rep_mem = os.path.join(OUTPUTDIR,"clustered_files_sample",
+            "repmem_deepclust_filtered_sample_{coverage}.out")
     run:
         deepclust=pd.read_csv(input.deepclust,sep="\t",header=None,names=["Representative","Member"])
         deepclust_forcheck=deepclust.copy(deep=True)
-        deepclust_forcheck["Member_simp"]=["database" if "_reference" in curr else "sample" for curr in deepclust_forcheck["Member"]]
+        deepclust_forcheck["Member_simp"]=["database" if "_reference" in curr else \
+            "sample" for curr in deepclust_forcheck["Member"]]
         def listset(list_in):
             return "_".join(sorted(list(set(list_in))))
         deepclust_summarized = deepclust_forcheck.groupby("Representative")["Member_simp"].agg(listset).reset_index()
-        #deepclust_summarized=deepclust_summarized.loc[(deepclust_summarized.Member_simp=="database_sample")|(deepclust_summarized.Member_simp=="sample"),:]
         
         deepclust_summarized=deepclust_summarized.loc[(deepclust_summarized.Member_simp=="database_sample"),:]
         
@@ -235,7 +223,8 @@ rule filter_assembly_samp_ref:
 rule hierarchical_clustering_sample_ref:
     input:
         deepclust_filtered = os.path.join(OUTPUTDIR,"filtered_assembly_sample","filtered_assembly_sample_{coverage}.fasta"),
-        deepclust_filtered_rep_mem = os.path.join(OUTPUTDIR,"clustered_files_sample","repmem_deepclust_filtered_sample_{coverage}.out"),
+        deepclust_filtered_rep_mem = os.path.join(OUTPUTDIR,"clustered_files_sample",
+            "repmem_deepclust_filtered_sample_{coverage}.out"),
         tax_table = os.path.join(DATABASEDIR,"tax_table_haptophyta.txt")
     output:
         outfile = os.path.join(OUTPUTDIR,"sample_hier_clust_{distance}","cov_{coverage}","done_{coverage}.txt")

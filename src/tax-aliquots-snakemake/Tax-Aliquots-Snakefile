@@ -12,9 +12,7 @@ import subprocess
 import itertools
 import dask
 import difflib
-#import pysais
 import argparse, textwrap
-#import parsl
 from Bio import SeqIO
 from dask import delayed
 from dask.distributed import Client
@@ -25,10 +23,9 @@ from sklearn.datasets import make_blobs
 from scipy.cluster.hierarchy import linkage, fcluster, dendrogram
 import ahocorasick
 from ahocorasick import Automaton
-#from parsl import python_app, bash_app
 
 OUTPUTDIR = "../../output/tax-aliquots_sm_8"
-DATABASEDIR = "/vortexfs1/omics/alexander/akrinos/00-tax-aliquots/tax-aliquots/data/databases"
+DATABASEDIR = "./data/databases"
 
 ruleorder: filter_deepclust > diamond_deepclust
 ruleorder: hierarchical_clustering_split > hierarchical_clustering
@@ -58,9 +55,9 @@ def select_tax_table(wc_database):
         
 def select_data_file(wc_database):
     if wc_database=="thal":
-        return os.path.join("/vortexfs1/omics/alexander/akrinos/2021-testing-eukrhythmic/eukrhythmic_paper_narragansett/intermediate-files/04-compare/13-MAD-proteins/MAD.fasta.transdecoder.pep")
+        return os.path.join("<path_to_pep_file>")
     elif wc_database=="phaeo":
-        return os.path.join("/vortexfs1/omics/alexander/data/TARA/PRJEB4352-snakmake-output/prodigal/SO-all-SRF-0.8-5.00/proteins.faa")
+        return os.path.join("<path_to_phaeo_file>")
     elif wc_database=="phaeo_txme":
         return os.path.join(DATABASEDIR,"Pouch_Trinity_transdecoder_decontam.pep")
     elif wc_database=="phaeo_txme_all":
@@ -103,14 +100,11 @@ def compute_intersections(strings,kmer_len,cluster_seq_ids):
 
     intersection_info_curr  = np.triu(intersection_info_curr) + np.triu(intersection_info_curr,1).T
     intersection_info_curr = pd.DataFrame(intersection_info_curr)
-    print(cluster_seq_ids,flush=True)
     intersection_info_curr.index=cluster_seq_ids
     intersection_info_curr.columns=cluster_seq_ids
     return intersection_info_curr
 
 def get_list_of_seqs(behaved_fasta,list_of_seqs,intermed_file_dir):
-    #print(read_in_sequences(behaved_fasta,list_of_seqs,intermed_file_dir),flush=True)
-    #print("READINSEQS",flush=True)
     return [str(curr.seq) for curr in read_in_sequences(behaved_fasta,list_of_seqs,intermed_file_dir)]
 
 def hier_clust(clust_rep,subfile_clust,kmer_len,
@@ -145,7 +139,6 @@ def hier_clust(clust_rep,subfile_clust,kmer_len,
 
     if len(dataframe_intersections_unmelt.index) > 1:
         to_drop = list(tax_table.columns) + ["Source_ID","PEP_ID","Rep","Mem"]
-        #to_drop = ["Source_ID","PEP_ID","Rep","Mem"]
         a=np.array(dataframe_intersections_unmelt.\
                    drop(to_drop,axis="columns"))
         np.fill_diagonal(a,0)
@@ -166,37 +159,20 @@ def hier_clust(clust_rep,subfile_clust,kmer_len,
 
     dataframe_intersections_unmelt["HomClust"]=hom_clust_id.split("/")[-1].split(".")[0]
     dataframe_intersections_unmelt["SeqNames"] = sequence_names
-    #dataframe_intersections_unmelt.loc[:,["Source_ID","PEP_ID","HomClust","cluster_blob","division","domain"]].\
     dataframe_intersections_unmelt.loc[:,["Source_ID","PEP_ID","HomClust","cluster_blob","division","domain"]].\
         to_csv(os.path.join(intermed_file_dir,str(hom_clust_id)+"_k_"+str(kmer_len)+".intermed"))
     dataframe_intersections_unmelt.\
         to_csv(os.path.join(intermed_file_dir,"withdist"+str(hom_clust_id)+"_k_"+str(kmer_len)+".intermed"))
     return hom_clust_id
 
-split_no=50000
-nseqs_phaeo=1000000
-nseqs_thal=100000000
 rule all:
     input:
-        #outfile = expand(os.path.join(OUTPUTDIR,"hier_clust_{distance}","{database}","{split1}",
-        #    "done_{database}.txt"),database=["phaeo"],
-        #                 distance=[0.5], split1=list(range(0,nseqs_phaeo,split_no))),
-        #outfile_thal = expand(os.path.join(OUTPUTDIR,"hier_clust_{distance}","{database}","{split1}",
-        #    "done_{database}.txt"),database=["thal"],
-        #                 distance=[0.5], split1=list(range(0,nseqs_thal,split_no)))
-        #outfile = expand(os.path.join(OUTPUTDIR,"hier_clust_{dist}","done_{database}.txt"),database=["phaeo_txme",
-        #                "phaeo_txme_all","phaeo_txme_all_w_pouch"],
-        #                 dist=[0.5,0.3,0.1,0.8]),
-        #outfile_all_clust = expand(os.path.join(OUTPUTDIR,"all_hier_clust_{dist}","done_{database}.txt"),database=["phaeo_txme",
-        #                "phaeo_txme_all","phaeo_txme_all_w_pouch"],
-        #                 dist=[0.5,0.3,0.1,0.8]),
-        #outfile_sample_clust = expand(os.path.join(OUTPUTDIR,"sample_hier_clust_{dist}","done_{database}.txt"),database=["phaeo_txme",
-        #                "phaeo_txme_all","phaeo_txme_all_w_pouch"],
-        #                 dist=[0.5,0.3,0.1,0.8]),
+        outfile_sample_clust = expand(os.path.join(OUTPUTDIR,"sample_hier_clust_{dist}",
+                         "done_{database}.txt"),database=["phaeo_txme",
+                         "phaeo_txme_all","phaeo_txme_all_w_pouch"],
+                          dist=[0.5,0.3,0.1,0.8]),
         eukulele_ref = expand(os.path.join(OUTPUTDIR,"eukulele_default","{database}","done_default.txt"),
                         database=["phaeo_txme_all"])
-        #eukulele = expand(os.path.join(OUTPUTDIR,"eukulele_run","{database}","done.txt"),
-        #                database=["phaeo_txme","phaeo_txme_all","phaeo_txme_all_w_pouch"])
 
 rule combined_files:
     input:
@@ -211,8 +187,6 @@ rule combined_files:
         sed 's/\s.*$/_sample/' {input.sequence_file} >> {output.combined_file}
         """
 
-#sed 's/\s.*$/_reference/' {input.database_file} > {output.combined_file}
-#sed 's/\s.*$/_sample/' {input.sequence_file} >> {output.combined_file}
 rule diamond_deepclust:
     input:
         combined_file = os.path.join(OUTPUTDIR,"input_files","combined_input_{database}.fasta")
@@ -220,7 +194,7 @@ rule diamond_deepclust:
         deepclust = os.path.join(OUTPUTDIR,"clustered_files","deepclust_{database}.out")
     shell:
         """
-        /vortexfs1/omics/alexander/akrinos/2022-euk-diversity/code/snakemake-workflows/diamond-deepclust/diamond deepclust -d {input.combined_file} -o {output.deepclust} --member-cover 30
+        diamond deepclust -d {input.combined_file} -o {output.deepclust} --member-cover 30
         """
 
 rule filter_deepclust:
@@ -232,7 +206,8 @@ rule filter_deepclust:
     run:
         deepclust=pd.read_csv(input.deepclust,sep="\t",header=None,names=["Representative","Member"])
         deepclust_forcheck=deepclust.copy(deep=True)
-        deepclust_forcheck["Member_simp"]=["database" if "_reference" in curr else "sample" for curr in deepclust_forcheck["Member"]]
+        deepclust_forcheck["Member_simp"]=["database" if "_reference" in curr else "sample" \
+                for curr in deepclust_forcheck["Member"]]
         def listset(list_in):
             return "_".join(sorted(list(set(list_in))))
         deepclust_summarized = deepclust_forcheck.groupby("Representative")["Member_simp"].agg(listset).reset_index()
@@ -291,15 +266,18 @@ rule filter_deepclust_sample:
         deepclust = os.path.join(OUTPUTDIR,"clustered_files","deepclust_{database}.out")
     output:
         deepclust_filtered = os.path.join(OUTPUTDIR,"clustered_files_sample","deepclust_filtered_sample_{database}.out"),
-        deepclust_filtered_rep_mem = os.path.join(OUTPUTDIR,"clustered_files_sample","repmem_deepclust_filtered_sample_{database}.out")
+        deepclust_filtered_rep_mem = os.path.join(OUTPUTDIR,"clustered_files_sample",
+                "repmem_deepclust_filtered_sample_{database}.out")
     run:
         deepclust=pd.read_csv(input.deepclust,sep="\t",header=None,names=["Representative","Member"])
         deepclust_forcheck=deepclust.copy(deep=True)
-        deepclust_forcheck["Member_simp"]=["database" if "_reference" in curr else "sample" for curr in deepclust_forcheck["Member"]]
+        deepclust_forcheck["Member_simp"]=["database" if "_reference" in curr else "sample" \
+            for curr in deepclust_forcheck["Member"]]
         def listset(list_in):
             return "_".join(sorted(list(set(list_in))))
         deepclust_summarized = deepclust_forcheck.groupby("Representative")["Member_simp"].agg(listset).reset_index()
-        deepclust_summarized=deepclust_summarized.loc[(deepclust_summarized.Member_simp=="database_sample")|(deepclust_summarized.Member_simp=="sample"),:]
+        deepclust_summarized=deepclust_summarized.loc[(deepclust_summarized.Member_simp=="database_sample")|\
+                             (deepclust_summarized.Member_simp=="sample"),:]
         
         merged_dc = deepclust.merge(deepclust_summarized[["Representative","Member_simp"]],left_on="Representative",
                 right_on="Representative",how="inner")
@@ -354,8 +332,6 @@ rule hierarchical_clustering:
                                                   intermed_file_dir,hom_clust_id,
                                                   input.deepclust_filtered,tax_table,params.distance_thres))
 
-        # Main function: wait for all apps to finish and collect the results
-        #outputs = [i.result() for i in completion_nums]
         
         tax_table.to_csv(output.outfile)
 
@@ -394,8 +370,6 @@ rule hierarchical_clustering_all:
                                                   intermed_file_dir,hom_clust_id,
                                                   input.deepclust_filtered,tax_table,params.distance_thres))
 
-        # Main function: wait for all apps to finish and collect the results
-        #outputs = [i.result() for i in completion_nums]
         
         tax_table.to_csv(output.outfile)
 
@@ -436,62 +410,5 @@ rule hierarchical_clustering_sample:
 
         # Main function: wait for all apps to finish and collect the results
         #outputs = [i.result() for i in completion_nums]
-        
-        tax_table.to_csv(output.outfile)
-
-rule split_files:
-    input:
-        deepclust_filtered_rep_mem = os.path.join(OUTPUTDIR,"clustered_files",
-                        "repmem_deepclust_filtered_{database}.out")
-    output:
-        deepclust_filtered_rep_mem = os.path.join(OUTPUTDIR,"clustered_files",
-                        "repmem_split_{split1}_deepclust_filtered_{database}.out")
-    params:
-        chunk_len=split_no,
-        number="{split1}"
-    shell:
-        """
-        head -n {params.number} {input.deepclust_filtered_rep_mem} | tail -n {params.chunk_len} > {output.deepclust_filtered_rep_mem}
-        """
-
-rule hierarchical_clustering_split:
-    input:
-        deepclust_filtered = os.path.join(OUTPUTDIR,"filtered_assembly","filtered_assembly_{database}.fasta"),
-        deepclust_filtered_rep_mem = os.path.join(OUTPUTDIR,"clustered_files",
-                        "repmem_split_{split1}_deepclust_filtered_{database}.out"),
-        deepclust_list = os.path.join(OUTPUTDIR,"clustered_files","deepclust_filtered_{database}.out"),
-        tax_table = lambda wc: select_tax_table(wc.database)
-    output:
-        outfile = os.path.join(OUTPUTDIR,"hier_clust_{distance}","{database}","{split1}",
-            "done_{database}.txt")
-    params:
-        intermed_dir = os.path.join(OUTPUTDIR,"hier_clust_{distance}","{database}","{split1}"),
-        distance_thres = "{distance}"
-    run:
-        if not os.path.exists(params.intermed_dir):
-            os.makedirs(params.intermed_dir)
-        tax_table = pd.read_csv(input.tax_table,sep="\t")
-        tax_table=tax_table.drop([curr for curr in tax_table.columns if "Unnamed" in curr],
-                                 axis="columns")
-        tax_table.columns = [curr.lower() for curr in tax_table.columns]
-        tax_table.source_id = tax_table.source_id.astype(str)
-        read_in_dc = pd.read_csv(input.deepclust_filtered_rep_mem,sep="\t",header=None,names=["Rep","Mem"])
-        clust_rep_set=list(set(read_in_dc.Rep))
-        cluster_ids = ["HomClust_"+str(curr) for curr in range(len(clust_rep_set))]
-        cluster_id_dict = dict(zip(clust_rep_set,cluster_ids))
-
-        intermed_file_dir=params.intermed_dir
-        completion_nums = []
-        for clust_rep in clust_rep_set:
-            subfile_clust=read_in_dc.loc[read_in_dc.Rep==clust_rep,:]
-            if len(subfile_clust.index)==0:
-                next
-            hom_clust_id=cluster_id_dict[clust_rep]
-            completion_nums.append(hier_clust(clust_rep,subfile_clust,3,
-                                              intermed_file_dir,hom_clust_id,
-                                              input.deepclust_filtered,tax_table,params.distance_thres))
-
-        # Main function: wait for all apps to finish and collect the results
-        outputs = [i.result() for i in completion_nums]
         
         tax_table.to_csv(output.outfile)
